@@ -1,0 +1,14 @@
+﻿syntax = "proto3";
+package PB;
+
+enum Message
+{
+	None 	= 0;
+	Multi   = 1;
+
+	// 消息(系统/世界聊天)部分
+	Chat_ChatRequest						= 20403;    //by huhao
+	Chat_ChatTachChatGoup 					 =20404;
+	Chat_SetChatChannelSwitch			    = 20406;
+
+}
