@@ -27,5 +27,4 @@ type Server struct {
 	Chan_Connection chan *Session
 	Chan_Packet     chan *ClientPacket
 	Chan_Close      chan *Session
-	Handler         map[int32]interface{}
 }

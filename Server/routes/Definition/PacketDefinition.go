@@ -8,7 +8,6 @@ type Packet struct {
 	Data      []byte
 	HasReqId  bool
 	ReqId     uint32 //在包尾
-	Handlers  map[int32]interface{}
 }
 
 const (

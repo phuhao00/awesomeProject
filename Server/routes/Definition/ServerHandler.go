@@ -2,7 +2,6 @@ package Definition
 
 import (
 	"../../kcp"
-	DF "./"
 	"fmt"
 	"net"
 )
@@ -33,9 +32,7 @@ func (PSSM *PacketSessionServerManager) NewServer(id string, addr string, protoc
 		nil,
 		nil,
 		nil,
-		nil,
 	}
-	newServer.Handler = InitServerHandler(newServer)
 
 	if options == nil {
 		options = &ServerOptionsDefault
@@ -84,7 +81,7 @@ func (self *Server) Run() error {
 			return err
 		}
 
-		session := NewSession(&self.Chan_Packet, conn)
+		session := PSSM.NewSession(&self.Chan_Packet, conn)
 		session.HandleClose = self.OnSessionClose
 		switch self.Protocol {
 		case ProtocolType_KCP:
@@ -97,7 +94,7 @@ func (self *Server) Run() error {
 			KCPConn.SetMtu(1400)
 		}
 
-		session.Send(NewPacket(0, 0))
+		session.Send(PSSM.NewPacket(0, 0))
 
 		fmt.Println(self.Protocol, "new connected", session.GetRemoteAddr())
 		if self.Chan_Connection != nil {

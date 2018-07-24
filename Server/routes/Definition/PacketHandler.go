@@ -80,7 +80,6 @@ func (PPSM *PacketSessionServerManager) NewPacket(messageId uint32, errCode uint
 		make([]byte, PACK_HEAD_SIZE, 128),
 		false,
 		0, //在包尾
-		nil,
 	}
 	pkt.Init(messageId, errCode)
 	return pkt
