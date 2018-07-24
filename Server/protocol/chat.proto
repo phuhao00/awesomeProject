@@ -1,8 +1,8 @@
 syntax = "proto3";
 package PB;
 message request{
-
+string msg=1;
 }
 message response{
-
+    string msg=1;
 }
