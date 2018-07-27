@@ -2,16 +2,12 @@ package Definition
 
 import (
 	"../../PB"
-	DF "./"
 	"encoding/binary"
 	"fmt"
 	"github.com/golang/protobuf/proto"
 )
 
 func (PPSM *PacketSessionServerManager) initPacketHandler() {
-	PPSM.Handlers = make(map[int32]interface{})
-	PPSM.Handlers[NewPacket_] = PacketSessionServerManager.NewPacket
-	PPSM.Handlers[NewPbPacket_] = PacketSessionServerManager.NewPbPacket
 }
 func (self *Packet) Init(messageId uint32, errCode uint32) {
 	self.MessageId = messageId
@@ -21,6 +17,19 @@ func (self *Packet) Init(messageId uint32, errCode uint32) {
 func Reset(self *Packet) {
 	self.Data = self.Data[:PACK_HEAD_SIZE]
 	self.HasReqId = false
+}
+func (self *Packet) parseHeader() {
+	self.MessageId = binary.LittleEndian.Uint32(self.Data[OFFSET_MESSAGE_ID : OFFSET_MESSAGE_ID+4])
+	self.MsgLength = int(binary.LittleEndian.Uint32(self.Data[OFFSET_MESSAGE_LEN : OFFSET_MESSAGE_LEN+4]))
+	self.ErrCode = binary.LittleEndian.Uint32(self.Data[OFFSET_ERRCODE : OFFSET_ERRCODE+4])
+	self.Version = binary.LittleEndian.Uint16(self.Data[OFFSET_VERSION : OFFSET_VERSION+2])
+	if self.Version>>15 == 1 {
+		self.HasReqId = true
+		self.Version = self.Version << 1 >> 1
+	}
+	if self.MsgLength > 0 {
+		self.CheckSize(self.MsgLength + PACK_HEAD_SIZE)
+	}
 }
 func (self *Packet) Pack() *Packet {
 	binary.LittleEndian.PutUint32(self.Data[OFFSET_MESSAGE_ID:OFFSET_MESSAGE_ID+4], self.MessageId)

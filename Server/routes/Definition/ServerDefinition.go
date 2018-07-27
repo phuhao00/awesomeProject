@@ -4,11 +4,21 @@ import "net"
 
 type ProtocolType string
 
+const (
+	SessionState_Logout = 1
+	SessionState_Login  = 1 << 1
+	SessionState_InGame = 1 << 2
+)
+
 type ServerOptions struct {
 	WriteBufferLen int
 	ReadBufferLen  int
 	StreamMode     bool
 	Timeout        int
+}
+
+type ttt struct {
+	gg string
 }
 
 var ServerOptionsDefault ServerOptions = ServerOptions{

@@ -4,21 +4,21 @@ import "github.com/golang/protobuf/proto"
 import "../../PB"
 
 type PacketSessionServerManager struct {
-	Handlers map[int32]interface{}
+	Handlers map[int32]func()
 }
 
 var PSSM = new(PacketSessionServerManager)
 
 func (self *PacketSessionServerManager) initPSSM() {
-	PSSM.Handlers = make(map[int32]interface{})
+	PSSM.Handlers = make(map[int32]func())
 	PSSM.InitServerHandler()
 	PSSM.initPacketHandler()
 	PSSM.InitSessionHandler()
 }
 
 type SyncPBRequest struct {
-	Id uint32
-	PB.Message
+	Id              uint32
+	MsgId           PB.Message
 	Errcode         uint32
 	Request         proto.Message
 	Response        proto.Message

@@ -16,8 +16,6 @@ const (
 )
 
 func (PSSM *PacketSessionServerManager) InitServerHandler() {
-	PSSM.Handlers = make(map[int32]interface{})
-	PSSM.Handlers[newServer] = PacketSessionServerManager.NewServer
 }
 func (PSSM *PacketSessionServerManager) NewServer(id string, addr string, protocol ProtocolType, options *ServerOptions) *Server {
 	if protocol == ProtocolType_UDP {
@@ -27,17 +25,14 @@ func (PSSM *PacketSessionServerManager) NewServer(id string, addr string, protoc
 		id,
 		addr,
 		nil,
-		nil,
-		nil,
+		protocol,
+		ServerOptionsDefault,
 		nil,
 		nil,
 		nil,
 	}
-
-	if options == nil {
-		options = &ServerOptionsDefault
-	} else {
-		options = options
+	if options != nil {
+		newServer.Options = *options
 	}
 	return newServer
 }
@@ -103,6 +98,9 @@ func (self *Server) Run() error {
 		go session.Run()
 	}
 	return nil
+}
+func (self *Server) Close() {
+	self.Listener.Close()
 }
 func (self *Server) OnSessionClose(session *Session) {
 	self.Chan_Close <- session

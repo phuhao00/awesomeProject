@@ -4,9 +4,12 @@ import "net"
 import (
 	"../../PB"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"github.com/golang/protobuf/proto"
+	"hash/crc32"
 	"io"
+	"sync/atomic"
 	"time"
 )
 
@@ -18,26 +21,14 @@ const (
 )
 
 func (PSSM *PacketSessionServerManager) InitSessionHandler() {
-	PSSM.Handlers = make(map[int32]interface{})
-	PSSM.Handlers[newSession] = PacketSessionServerManager.NewSession
 }
 func (PSSM *PacketSessionServerManager) NewSession(chanpacket *chan *ClientPacket, conn net.Conn) *Session {
 	self := &Session{
-		nil,
-		0,
-		nil,
-		0,
-		"",
-		nil,
-		nil,
-		nil,
-		nil,
-		nil,
-		false,
-		false,
-		nil,
-		nil,
-		0,
+		Userid:      0,
+		Conn:        conn,
+		chan_packet: chanpacket,
+		Packet:      PSSM.NewPacket(0, 0),
+		State:       SessionState_Logout,
 	}
 	return self
 }
@@ -54,7 +45,7 @@ func (self *Session) Run() {
 	})
 }
 func (self *Session) Close() {
-	self.connected = false
+	self.Connected = false
 	//log.Printf("Session %p Close!", self)
 	self.Conn.Close()
 }
@@ -64,7 +55,7 @@ func (self *Session) ReadPacketCoroutine() {
 		if packet == nil {
 			break
 		}
-		self.connected = true
+		self.Connected = true
 		if !self.IsClient {
 			self.Conn.SetReadDeadline(time.Now().Add(time.Second * time.Duration(clienttimeout)))
 		}
@@ -95,7 +86,7 @@ func (self *Session) ReadPacketCoroutine() {
 	}
 }
 func (self *Session) GetPacket() (*Packet, error) {
-	self.Packet = NewPacket(0, 0)
+	self.Packet = PSSM.NewPacket(0, 0)
 	// 读header
 	_, err := self.readData(self.Packet.Data, PACK_HEAD_SIZE)
 	if err != nil {
@@ -153,21 +144,8 @@ func (self *Session) Send(packet *Packet) (int, error) {
 	}
 	return i, err
 }
-func (self *Packet) parseHeader() {
-	self.MessageId = binary.LittleEndian.Uint32(self.Data[OFFSET_MESSAGE_ID : OFFSET_MESSAGE_ID+4])
-	self.MsgLength = int(binary.LittleEndian.Uint32(self.Data[OFFSET_MESSAGE_LEN : OFFSET_MESSAGE_LEN+4]))
-	self.ErrCode = binary.LittleEndian.Uint32(self.Data[OFFSET_ERRCODE : OFFSET_ERRCODE+4])
-	self.Version = binary.LittleEndian.Uint16(self.Data[OFFSET_VERSION : OFFSET_VERSION+2])
-	if self.Version>>15 == 1 {
-		self.HasReqId = true
-		self.Version = self.Version << 1 >> 1
-	}
-	if self.MsgLength > 0 {
-		self.CheckSize(self.MsgLength + PACK_HEAD_SIZE)
-	}
-}
 func (self *Session) SendPbmsg(messageid PB.Message, errcode uint32, pbmsg proto.Message) (int, error) {
-	pkt, err := NewPbPacket(messageid, errcode, pbmsg)
+	pkt, err := PSSM.NewPbPacket(messageid, errcode, pbmsg)
 	if err != nil {
 		fmt.Println("Marshal SendPbmsg err :", messageid)
 		return 0, err
@@ -176,4 +154,71 @@ func (self *Session) SendPbmsg(messageid PB.Message, errcode uint32, pbmsg proto
 }
 func (self *Session) GetRemoteAddr() string {
 	return self.Conn.RemoteAddr().String()
+}
+func (self *Session) SendAsyncRequest(request *AsyncPBRequest) (int, error) {
+	return self.SendPbmsgWithRequestId(request.MsgId, request.Errcode, request.Request, request.Id)
+}
+func (self *Session) SendPbmsgWithRequestId(messageid PB.Message, errcode uint32, pbmsg proto.Message, reqId uint32) (int, error) {
+	pkt, err := PSSM.NewPbPacket(messageid, errcode, pbmsg)
+	if err != nil {
+		fmt.Println("Marshal SendPbmsg err :", messageid)
+		return 0, err
+	}
+	if reqId > 0 {
+		pkt.HasReqId = true
+		pkt.ReqId = reqId
+	}
+	return self.Send(pkt)
+}
+func (self *Session) Cor_SyncSendPbmsg(request *SyncPBRequest) {
+	reqid := atomic.AddUint32(&self.reqIdNext, 1)
+	request.Id = reqid
+	if request.Ch_response == nil {
+		request.Ch_response = make(chan *Packet)
+	}
+	self.syncRequests.Store(request.Id, request)
+	self.SendPbmsgWithRequestId(request.MsgId, request.Errcode, request.Request, request.Id)
+	go func() {
+		packet := <-request.Ch_response
+		if packet == nil {
+			request.ResponseErrCode = -1
+		} else {
+			request.ResponseErrCode = int32(packet.ErrCode)
+			if request.Response != nil {
+				err := proto.Unmarshal(packet.GetMessageData(), request.Response)
+				if err != nil {
+					request.ResponseErrCode = -2
+				}
+			}
+		}
+	}()
+
+	return
+}
+
+func (self *Session) SendGMJsonMsg(messageid PB.Message, errcode uint32, jsonMsg interface{}) (int, error) {
+	var mData []byte
+	var err error
+	if jsonMsg != nil {
+		mData, err = json.Marshal(jsonMsg)
+		if err != nil {
+			fmt.Println("Marshal SendPbmsg err :", messageid)
+			return 0, err
+		}
+	}
+
+	mData = append(mData, 0)
+	mData = append(mData, GetCRC32Code(mData)...)
+
+	pkt := PSSM.NewPacket(uint32(messageid), errcode).Append(mData)
+	return self.Send(pkt)
+}
+func GetCRC32Code(data []byte) []byte {
+	ieee := crc32.NewIEEE()
+	io.WriteString(ieee, string(data))
+	s := ieee.Sum32()
+	str := fmt.Sprintf("%x", s)
+	rdata := []byte(str)
+	rdata = append(rdata, 0)
+	return rdata
 }
