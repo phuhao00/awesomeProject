@@ -1,9 +1,10 @@
 package Definition
 
 import (
-	"../../kcp"
 	"fmt"
 	"net"
+
+	"../../kcp"
 )
 
 const (
